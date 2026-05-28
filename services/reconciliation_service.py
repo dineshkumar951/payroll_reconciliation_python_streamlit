@@ -110,7 +110,9 @@ def generate_grouped_report(
     sum_columns,
     keep_columns=None,
     period_begin_column=None,
-    period_end_column=None
+    period_end_column=None,
+    add_total_tax=False,
+    tax_columns=None
 ):
 
     temp_df = df.copy()
@@ -158,6 +160,12 @@ def generate_grouped_report(
         if pd.api.types.is_datetime64_any_dtype(grouped_df[col]):
             grouped_df[col] = grouped_df[col].dt.strftime('%m/%d/%Y')
 
+    # Add Total Tax column if requested
+    if add_total_tax and tax_columns:
+        valid_tax_cols = [col for col in tax_columns if col in grouped_df.columns]
+        if valid_tax_cols:
+            grouped_df["Total Tax"] = grouped_df[valid_tax_cols].fillna(0).sum(axis=1)
+
     return grouped_df
 
 
@@ -172,7 +180,9 @@ def generate_accrued_report(
     period_end_column,
     sum_columns,
     keep_columns,
-    cy_year
+    cy_year,
+    add_total_tax=False,
+    tax_columns=None
 ):
     """
     Returns (normal_df, accrued_df).
@@ -321,6 +331,16 @@ def generate_accrued_report(
     accrued_df = _aggregate(
         accrued_rows, group_cols, sum_columns, accrued_keep
     )
+
+    # Add Total Tax column if requested
+    if add_total_tax and tax_columns:
+        valid_tax_cols = [col for col in tax_columns if col in normal_df.columns]
+        if valid_tax_cols:
+            normal_df["Total Tax"] = normal_df[valid_tax_cols].fillna(0).sum(axis=1)
+
+        valid_tax_cols_accrued = [col for col in tax_columns if col in accrued_df.columns]
+        if valid_tax_cols_accrued:
+            accrued_df["Total Tax"] = accrued_df[valid_tax_cols_accrued].fillna(0).sum(axis=1)
 
     return normal_df, accrued_df
 

@@ -218,7 +218,9 @@ if uploaded_file:
                 period_begin_column,
                 period_end_column,
                 sum_columns,
-                keep_columns
+                keep_columns,
+                add_total_tax,
+                tax_columns
             ) = reconciliation_selection_ui(filtered_df, accrued_mode)
 
             # Use the filter columns as fallback if UI columns not yet set
@@ -244,7 +246,9 @@ if uploaded_file:
                         period_end_column,
                         sum_columns,
                         keep_columns,
-                        selected_year
+                        selected_year,
+                        add_total_tax,
+                        tax_columns
                     )
 
                     grouped_df = normal_df
@@ -257,7 +261,9 @@ if uploaded_file:
                         sum_columns,
                         keep_columns,
                         period_begin_column=period_begin_column,
-                        period_end_column=period_end_column
+                        period_end_column=period_end_column,
+                        add_total_tax=add_total_tax,
+                        tax_columns=tax_columns
                     )
 
                 st.subheader("Grouped Payroll Report")
@@ -333,10 +339,14 @@ if uploaded_file:
                 # REVIEW CHECKS
                 # -----------------------------------
 
+                check_columns = sum_columns.copy()
+                if add_total_tax and tax_columns:
+                    check_columns.append("Total Tax")
+
                 checks_df = generate_review_checks(
                     filtered_df,
                     grouped_df,
-                    sum_columns,
+                    check_columns,
                     accrued_df
                 )
 
@@ -366,5 +376,7 @@ if uploaded_file:
                 )
 
     except Exception as e:
+        print("=="*50)
+        print(f"Error processing file: {e}")
 
         st.error(f"Error: {str(e)}")
