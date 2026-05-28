@@ -18,25 +18,22 @@ def reconciliation_selection_ui(df, accrued_mode=False):
     )
 
     # -----------------------------------
-    # PERIOD DATE COLUMNS (accrued mode)
+    # PERIOD DATE COLUMNS (always shown —
+    # used as composite group key in both
+    # normal and accrued modes)
     # -----------------------------------
 
-    period_begin_column = None
-    period_end_column = None
+    period_begin_column = st.selectbox(
+        "Select Period Begin Date Column (Group By)",
+        columns,
+        key="period_begin_col"
+    )
 
-    if accrued_mode:
-
-        period_begin_column = st.selectbox(
-            "Select Period Begin Date Column",
-            columns,
-            key="period_begin_col"
-        )
-
-        period_end_column = st.selectbox(
-            "Select Period End Date Column",
-            columns,
-            key="period_end_col"
-        )
+    period_end_column = st.selectbox(
+        "Select Period End Date Column (Group By)",
+        columns,
+        key="period_end_col"
+    )
 
     # -----------------------------------
     # SUM COLUMNS

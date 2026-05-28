@@ -108,17 +108,31 @@ def generate_grouped_report(
     df,
     pay_date_column,
     sum_columns,
-    keep_columns=None
+    keep_columns=None,
+    period_begin_column=None,
+    period_end_column=None
 ):
 
     temp_df = df.copy()
 
-    temp_df[pay_date_column] = pd.to_datetime(
-        temp_df[pay_date_column],
-        errors="coerce"
-    )
+    # Normalize all date columns — strips time so 2025-01-17 00:00 and
+    # 2025-01-17 12:30 are treated as the same date when grouping.
+    date_cols = [pay_date_column]
+    if period_begin_column and period_begin_column in temp_df.columns:
+        date_cols.append(period_begin_column)
+    if period_end_column and period_end_column in temp_df.columns and period_end_column not in date_cols:
+        date_cols.append(period_end_column)
+
+    for col in date_cols:
+        temp_df[col] = pd.to_datetime(temp_df[col], errors="coerce").dt.normalize()
 
     temp_df = temp_df.dropna(subset=[pay_date_column])
+
+    # Build composite group key — deduplicated
+    group_cols = [pay_date_column]
+    for col in [period_begin_column, period_end_column]:
+        if col and col in temp_df.columns and col not in group_cols:
+            group_cols.append(col)
 
     agg_dict = {}
 
@@ -127,17 +141,22 @@ def generate_grouped_report(
 
     if keep_columns:
         for col in keep_columns:
-            if col != pay_date_column and col not in sum_columns:
+            if col not in group_cols and col not in sum_columns:
                 agg_dict[col] = "first"
 
     grouped_df = (
         temp_df
-        .groupby(pay_date_column)
+        .groupby(group_cols)
         .agg(agg_dict)
         .reset_index()
     )
 
-    grouped_df = grouped_df.sort_values(by=pay_date_column)
+    grouped_df = grouped_df.sort_values(by=group_cols)
+
+    # Format date columns as date-only strings (no time component)
+    for col in group_cols:
+        if pd.api.types.is_datetime64_any_dtype(grouped_df[col]):
+            grouped_df[col] = grouped_df[col].dt.strftime('%m/%d/%Y')
 
     return grouped_df
 
@@ -166,9 +185,9 @@ def generate_accrued_report(
 
     temp_df = df.copy()
 
-    # Convert date columns
+    # Convert and normalize date columns (strip time component)
     for col in [pay_date_column, period_begin_column, period_end_column]:
-        temp_df[col] = pd.to_datetime(temp_df[col], errors="coerce")
+        temp_df[col] = pd.to_datetime(temp_df[col], errors="coerce").dt.normalize()
 
     temp_df = temp_df.dropna(subset=[pay_date_column])
 
@@ -259,34 +278,48 @@ def generate_accrued_report(
     # Aggregate normal
     # -----------------------------------------------------------------------
 
-    def _aggregate(rows, group_col, sum_cols, keep_cols):
+    # Composite group key for accrued aggregation
+    group_cols = [pay_date_column]
+    for col in [period_begin_column, period_end_column]:
+        if col and col in temp_df.columns and col not in group_cols:
+            group_cols.append(col)
+
+    def _aggregate(rows, grp_cols, sum_cols, keep_cols):
         if not rows:
             return pd.DataFrame()
         frame = pd.DataFrame(rows)
+        # Normalize date columns in the aggregated frame
+        for col in grp_cols:
+            if col in frame.columns:
+                frame[col] = pd.to_datetime(frame[col], errors="coerce").dt.normalize()
         for col in sum_cols:
             frame[col] = pd.to_numeric(frame[col], errors="coerce").fillna(0)
         agg_dict = {col: "sum" for col in sum_cols}
         if keep_cols:
             for col in keep_cols:
-                if col != group_col and col not in sum_cols:
+                if col not in grp_cols and col not in sum_cols:
                     agg_dict[col] = "first"
         grouped = (
             frame
-            .groupby(group_col)
+            .groupby(grp_cols)
             .agg(agg_dict)
             .reset_index()
-            .sort_values(by=group_col)
+            .sort_values(by=grp_cols)
         )
+        # Format date columns as date-only strings
+        for col in grp_cols:
+            if col in grouped.columns and pd.api.types.is_datetime64_any_dtype(grouped[col]):
+                grouped[col] = grouped[col].dt.strftime('%m/%d/%Y')
         return grouped
 
     normal_df = _aggregate(
-        normal_rows, pay_date_column, sum_columns, keep_columns
+        normal_rows, group_cols, sum_columns, keep_columns
     )
 
     # For accrued we also preserve Payroll_Category and GL_Code
     accrued_keep = list(keep_columns or []) + ["Payroll_Category", "GL_Code"]
     accrued_df = _aggregate(
-        accrued_rows, pay_date_column, sum_columns, accrued_keep
+        accrued_rows, group_cols, sum_columns, accrued_keep
     )
 
     return normal_df, accrued_df

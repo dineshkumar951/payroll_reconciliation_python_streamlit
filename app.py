@@ -255,15 +255,79 @@ if uploaded_file:
                         filtered_df,
                         pay_date_column,
                         sum_columns,
-                        keep_columns
+                        keep_columns,
+                        period_begin_column=period_begin_column,
+                        period_end_column=period_end_column
                     )
 
                 st.subheader("Grouped Payroll Report")
-                st.dataframe(grouped_df)
+                st.caption(
+                    "Edit the **Row Order** column to rearrange rows, "
+                    "then click outside the cell to apply."
+                )
+
+                _grouped_display = grouped_df.copy()
+                _grouped_display.insert(
+                    0, "Row Order", range(1, len(_grouped_display) + 1)
+                )
+
+                _edited_grouped = st.data_editor(
+                    _grouped_display,
+                    column_config={
+                        "Row Order": st.column_config.NumberColumn(
+                            "Row Order",
+                            help="Change numbers to reorder rows",
+                            min_value=1,
+                            step=1,
+                            required=True,
+                        )
+                    },
+                    hide_index=True,
+                    use_container_width=True,
+                    key="grouped_editor"
+                )
+
+                grouped_df = (
+                    _edited_grouped
+                    .sort_values("Row Order")
+                    .drop(columns=["Row Order"])
+                    .reset_index(drop=True)
+                )
 
                 if accrued_mode and accrued_df is not None and len(accrued_df) > 0:
                     st.subheader("Accrued Payroll (separate)")
-                    st.dataframe(accrued_df)
+                    st.caption(
+                        "Edit the **Row Order** column to rearrange rows, "
+                        "then click outside the cell to apply."
+                    )
+
+                    _accrued_display = accrued_df.copy()
+                    _accrued_display.insert(
+                        0, "Row Order", range(1, len(_accrued_display) + 1)
+                    )
+
+                    _edited_accrued = st.data_editor(
+                        _accrued_display,
+                        column_config={
+                            "Row Order": st.column_config.NumberColumn(
+                                "Row Order",
+                                help="Change numbers to reorder rows",
+                                min_value=1,
+                                step=1,
+                                required=True,
+                            )
+                        },
+                        hide_index=True,
+                        use_container_width=True,
+                        key="accrued_editor"
+                    )
+
+                    accrued_df = (
+                        _edited_accrued
+                        .sort_values("Row Order")
+                        .drop(columns=["Row Order"])
+                        .reset_index(drop=True)
+                    )
 
                 # -----------------------------------
                 # REVIEW CHECKS
