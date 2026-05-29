@@ -1,3 +1,5 @@
+import calendar
+
 import streamlit as st
 import pandas as pd
 
@@ -9,8 +11,8 @@ from services.excel_service import (
 
 from services.payroll_service import (
     get_available_years,
-    filter_by_year,
-    filter_for_accrued_year
+    filter_by_period,
+    filter_for_accrued_period
 )
 
 from services.reconciliation_service import (
@@ -155,10 +157,10 @@ if uploaded_file:
         # ACCRUED MODE TOGGLE
         # -------------------------------------------
 
-        st.subheader("Year Selection")
+        st.subheader("Reconciliation Period Selection")
 
         accrued_mode = st.checkbox(
-            "Enable Accrued Payroll Mode (13-month range: full CY + 1 month of NY)",
+            "Enable Accrued Payroll Mode (adds 1 extra month after selected end month)",
             value=False,
             key="accrued_mode"
         )
@@ -168,23 +170,60 @@ if uploaded_file:
         # -------------------------------------------
 
         date_column = st.selectbox(
-            "Select Pay Date Column (for year detection)",
+            "Select Pay Date Column (for filtering)",
             df.columns.tolist(),
             key="date_column"
         )
 
         # -------------------------------------------
-        # YEAR SELECTION
+        # PERIOD SELECTION — Start Month/Year + End Month/Year
         # -------------------------------------------
+
+        MONTHS = [
+            "January", "February", "March", "April",
+            "May", "June", "July", "August",
+            "September", "October", "November", "December"
+        ]
 
         years = get_available_years(df, date_column)
 
         if len(years) > 0:
 
-            selected_year = st.selectbox(
-                "Select Current Fiscal Year (CY)",
-                years,
-                key="year_select"
+            year_options = list(range(min(years) - 1, max(years) + 2))
+            default_year_idx = (
+                year_options.index(max(years))
+                if max(years) in year_options
+                else len(year_options) - 2
+            )
+
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                start_month_name = st.selectbox(
+                    "Start Month", MONTHS, index=0, key="start_month"
+                )
+            with col2:
+                start_year = st.selectbox(
+                    "Start Year", year_options,
+                    index=default_year_idx, key="start_year"
+                )
+            with col3:
+                end_month_name = st.selectbox(
+                    "End Month", MONTHS, index=11, key="end_month"
+                )
+            with col4:
+                end_year = st.selectbox(
+                    "End Year", year_options,
+                    index=default_year_idx, key="end_year"
+                )
+
+            start_month_num = MONTHS.index(start_month_name) + 1
+            end_month_num = MONTHS.index(end_month_name) + 1
+
+            cy_start = pd.Timestamp(start_year, start_month_num, 1)
+            cy_end = pd.Timestamp(
+                end_year,
+                end_month_num,
+                calendar.monthrange(end_year, end_month_num)[1]
             )
 
             # -------------------------------------------
@@ -193,8 +232,6 @@ if uploaded_file:
 
             if accrued_mode:
 
-                # Period column selectors shown before filtering so we can
-                # use them in the filter
                 st.subheader("Period Date Columns")
 
                 period_begin_col_filter = st.selectbox(
@@ -209,17 +246,27 @@ if uploaded_file:
                     key="period_end_filter"
                 )
 
-                filtered_df = filter_for_accrued_year(
+                filtered_df = filter_for_accrued_period(
                     df,
                     date_column,
                     period_begin_col_filter,
                     period_end_col_filter,
-                    selected_year
+                    cy_start,
+                    cy_end
                 )
 
+                # Compute extra month label for the success message
+                if cy_end.month == 12:
+                    em_year = cy_end.year + 1
+                    em_month = 1
+                else:
+                    em_year = cy_end.year
+                    em_month = cy_end.month + 1
+
                 st.success(
-                    f"{len(filtered_df)} rows found for CY {selected_year} "
-                    f"(accrued mode — includes up to 1 month of {selected_year + 1})"
+                    f"{len(filtered_df)} rows found for "
+                    f"{start_month_name} {start_year} → {end_month_name} {end_year} "
+                    f"(accrued mode — includes {MONTHS[em_month - 1]} {em_year})"
                 )
 
             else:
@@ -227,14 +274,16 @@ if uploaded_file:
                 period_begin_col_filter = None
                 period_end_col_filter = None
 
-                filtered_df = filter_by_year(
+                filtered_df = filter_by_period(
                     df,
                     date_column,
-                    selected_year
+                    cy_start,
+                    cy_end
                 )
 
                 st.success(
-                    f"{len(filtered_df)} rows found for {selected_year}"
+                    f"{len(filtered_df)} rows found for "
+                    f"{start_month_name} {start_year} → {end_month_name} {end_year}"
                 )
 
             # ---------------------------------------
@@ -278,7 +327,8 @@ if uploaded_file:
                         period_end_column,
                         effective_sum_columns,
                         keep_columns,
-                        selected_year
+                        cy_start,
+                        cy_end
                     )
 
                     grouped_df = normal_df

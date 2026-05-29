@@ -20,40 +20,40 @@ def classify_payroll_run(
     pay_date,
     period_begin,
     period_end,
-    cy_year
+    cy_start,
+    cy_end
 ):
     """
     Classifies a single payroll run into one of 5 categories based on
-    how the pay date and period dates relate to the current fiscal year.
+    how the pay date and period dates relate to the selected reconciliation period.
+
+    cy_start / cy_end are Timestamps for the first and last day of the
+    user-selected period (e.g. 2025-04-01 / 2026-03-31 for an Apr-Mar year).
     """
 
     if pd.isna(pay_date) or pd.isna(period_begin) or pd.isna(period_end):
         return CAT_NORMAL
 
-    py_year = cy_year - 1
-    ny_year = cy_year + 1
+    pd_in_cy = cy_start <= pay_date <= cy_end
+    pd_after_cy = pay_date > cy_end
 
-    pd_year = pay_date.year
-    pb_year = period_begin.year
-    pe_year = period_end.year
-
-    # Category 2: pay date in CY, entire period in PY
-    if pd_year == cy_year and pb_year <= py_year and pe_year <= py_year:
+    # Category 2: pay date in period, entire period falls before period start
+    if pd_in_cy and period_end < cy_start:
         return CAT_PRIOR_PAID_CY
 
-    # Category 4: pay date in CY, period spans PY -> CY
-    if pd_year == cy_year and pb_year <= py_year and pe_year == cy_year:
+    # Category 4: pay date in period, period spans before-period → within period
+    if pd_in_cy and period_begin < cy_start and cy_start <= period_end <= cy_end:
         return CAT_SPLIT_BOY
 
-    # Category 3: pay date in NY, entire period in CY
-    if pd_year == ny_year and pb_year == cy_year and pe_year == cy_year:
+    # Category 3: pay date after period end, entire period within selected period
+    if pd_after_cy and cy_start <= period_begin <= cy_end and cy_start <= period_end <= cy_end:
         return CAT_CY_PAID_NY
 
-    # Category 5: pay date in NY, period spans CY -> NY
-    if pd_year == ny_year and pb_year == cy_year and pe_year == ny_year:
+    # Category 5: pay date after period end, period spans into the extra month
+    if pd_after_cy and cy_start <= period_begin <= cy_end and period_end > cy_end:
         return CAT_SPLIT_EOY
 
-    # Category 1: everything else with pay date in CY and period in CY
+    # Category 1: everything else (pay date in period, period fully in period)
     return CAT_NORMAL
 
 
@@ -72,21 +72,19 @@ def _working_days_in_range(start, end):
 def calculate_proration_factor(
     period_begin,
     period_end,
-    cy_year
+    cy_start,
+    cy_end
 ):
     """
-    Returns the fraction of the pay run that falls within cy_year.
+    Returns the fraction of the pay run that falls within [cy_start, cy_end].
     Used for Categories 4 (Split BOY) and 5 (Split EOY).
-    Returns 1.0 for runs fully within CY, 0.0 on bad data.
+    Returns 1.0 for runs fully within the period, 0.0 on bad data.
     """
 
     if pd.isna(period_begin) or pd.isna(period_end):
         return 1.0
 
-    cy_start = pd.Timestamp(cy_year, 1, 1)
-    cy_end = pd.Timestamp(cy_year, 12, 31)
-
-    # CY overlap window
+    # Overlap of the pay run with the reconciliation period
     overlap_start = max(period_begin, cy_start)
     overlap_end = min(period_end, cy_end)
 
@@ -172,15 +170,19 @@ def generate_accrued_report(
     period_end_column,
     sum_columns,
     keep_columns,
-    cy_year
+    cy_start,
+    cy_end
 ):
     """
     Returns (normal_df, accrued_df).
 
-    normal_df  — Category 1 runs + CY-prorated amounts for Categories 4 & 5,
+    cy_start / cy_end are Timestamps for the first and last day of the
+    user-selected reconciliation period.
+
+    normal_df  — Category 1 runs + period-prorated amounts for Categories 4 & 5,
                  grouped by pay date.
-    accrued_df — Categories 2, 3, 4 (NY portion), 5 (NY portion) with a
-                 Payroll_Category and GL_Code column, grouped by pay date.
+    accrued_df — Categories 2, 3, 4 (extra-month portion), 5 (extra-month portion)
+                 with a Payroll_Category and GL_Code column, grouped by pay date.
     """
 
     temp_df = df.copy()
@@ -197,7 +199,8 @@ def generate_accrued_report(
             r[pay_date_column],
             r[period_begin_column],
             r[period_end_column],
-            cy_year
+            cy_start,
+            cy_end
         ),
         axis=1
     )
@@ -207,7 +210,8 @@ def generate_accrued_report(
         lambda r: calculate_proration_factor(
             r[period_begin_column],
             r[period_end_column],
-            cy_year
+            cy_start,
+            cy_end
         ),
         axis=1
     )
