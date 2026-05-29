@@ -124,6 +124,34 @@ if uploaded_file:
         show_data_preview(df)
 
         # -------------------------------------------
+        # TOTAL TAX CONFIGURATION
+        # -------------------------------------------
+
+        st.subheader("Total Tax Configuration")
+
+        add_total_tax = st.checkbox(
+            "Add Total Tax Column",
+            value=False,
+            key="add_total_tax"
+        )
+
+        tax_columns = []
+        if add_total_tax:
+            tax_columns = st.multiselect(
+                "Select Tax Columns To Sum (Total Tax = sum of selected columns)",
+                df.columns.tolist(),
+                key="tax_columns"
+            )
+            if tax_columns:
+                valid_tax_cols = [c for c in tax_columns if c in df.columns]
+                df["Total Tax"] = (
+                    df[valid_tax_cols]
+                    .apply(pd.to_numeric, errors="coerce")
+                    .fillna(0)
+                    .sum(axis=1)
+                )
+
+        # -------------------------------------------
         # ACCRUED MODE TOGGLE
         # -------------------------------------------
 
@@ -218,9 +246,7 @@ if uploaded_file:
                 period_begin_column,
                 period_end_column,
                 sum_columns,
-                keep_columns,
-                add_total_tax,
-                tax_columns
+                keep_columns
             ) = reconciliation_selection_ui(filtered_df, accrued_mode)
 
             # Use the filter columns as fallback if UI columns not yet set
@@ -233,7 +259,13 @@ if uploaded_file:
             # GENERATE REPORT
             # ---------------------------------------
 
-            if len(sum_columns) > 0:
+            # Auto-include Total Tax in sum columns if it was computed
+            effective_sum_columns = list(sum_columns)
+            if add_total_tax and tax_columns and "Total Tax" in filtered_df.columns:
+                if "Total Tax" not in effective_sum_columns:
+                    effective_sum_columns.append("Total Tax")
+
+            if len(effective_sum_columns) > 0:
 
                 accrued_df = None
 
@@ -244,11 +276,9 @@ if uploaded_file:
                         pay_date_column,
                         period_begin_column,
                         period_end_column,
-                        sum_columns,
+                        effective_sum_columns,
                         keep_columns,
-                        selected_year,
-                        add_total_tax,
-                        tax_columns
+                        selected_year
                     )
 
                     grouped_df = normal_df
@@ -258,12 +288,10 @@ if uploaded_file:
                     grouped_df = generate_grouped_report(
                         filtered_df,
                         pay_date_column,
-                        sum_columns,
+                        effective_sum_columns,
                         keep_columns,
                         period_begin_column=period_begin_column,
-                        period_end_column=period_end_column,
-                        add_total_tax=add_total_tax,
-                        tax_columns=tax_columns
+                        period_end_column=period_end_column
                     )
 
                 st.subheader("Grouped Payroll Report")
@@ -339,14 +367,10 @@ if uploaded_file:
                 # REVIEW CHECKS
                 # -----------------------------------
 
-                check_columns = sum_columns.copy()
-                if add_total_tax and tax_columns:
-                    check_columns.append("Total Tax")
-
                 checks_df = generate_review_checks(
                     filtered_df,
                     grouped_df,
-                    check_columns,
+                    effective_sum_columns,
                     accrued_df
                 )
 
