@@ -1,4 +1,4 @@
-import calendar
+import datetime
 
 import streamlit as st
 import pandas as pd
@@ -176,55 +176,32 @@ if uploaded_file:
         )
 
         # -------------------------------------------
-        # PERIOD SELECTION — Start Month/Year + End Month/Year
+        # PERIOD SELECTION — Start Date + End Date
         # -------------------------------------------
-
-        MONTHS = [
-            "January", "February", "March", "April",
-            "May", "June", "July", "August",
-            "September", "October", "November", "December"
-        ]
 
         years = get_available_years(df, date_column)
 
         if len(years) > 0:
 
-            year_options = list(range(min(years) - 1, max(years) + 2))
-            default_year_idx = (
-                year_options.index(max(years))
-                if max(years) in year_options
-                else len(year_options) - 2
-            )
+            default_start = datetime.date(min(years), 1, 1)
+            default_end = datetime.date(max(years), 12, 31)
 
-            col1, col2, col3, col4 = st.columns(4)
+            col1, col2 = st.columns(2)
             with col1:
-                start_month_name = st.selectbox(
-                    "Start Month", MONTHS, index=0, key="start_month"
+                start_date = st.date_input(
+                    "Reconciliation Start Date",
+                    value=default_start,
+                    key="start_date"
                 )
             with col2:
-                start_year = st.selectbox(
-                    "Start Year", year_options,
-                    index=default_year_idx, key="start_year"
-                )
-            with col3:
-                end_month_name = st.selectbox(
-                    "End Month", MONTHS, index=11, key="end_month"
-                )
-            with col4:
-                end_year = st.selectbox(
-                    "End Year", year_options,
-                    index=default_year_idx, key="end_year"
+                end_date = st.date_input(
+                    "Reconciliation End Date",
+                    value=default_end,
+                    key="end_date"
                 )
 
-            start_month_num = MONTHS.index(start_month_name) + 1
-            end_month_num = MONTHS.index(end_month_name) + 1
-
-            cy_start = pd.Timestamp(start_year, start_month_num, 1)
-            cy_end = pd.Timestamp(
-                end_year,
-                end_month_num,
-                calendar.monthrange(end_year, end_month_num)[1]
-            )
+            cy_start = pd.Timestamp(start_date)
+            cy_end = pd.Timestamp(end_date)
 
             # -------------------------------------------
             # FILTER DATA
@@ -263,10 +240,11 @@ if uploaded_file:
                     em_year = cy_end.year
                     em_month = cy_end.month + 1
 
+                em_month_label = datetime.date(em_year, em_month, 1).strftime("%B %Y")
                 st.success(
                     f"{len(filtered_df)} rows found for "
-                    f"{start_month_name} {start_year} → {end_month_name} {end_year} "
-                    f"(accrued mode — includes {MONTHS[em_month - 1]} {em_year})"
+                    f"{start_date.strftime('%d %b %Y')} → {end_date.strftime('%d %b %Y')} "
+                    f"(accrued mode — includes {em_month_label})"
                 )
 
             else:
@@ -283,7 +261,7 @@ if uploaded_file:
 
                 st.success(
                     f"{len(filtered_df)} rows found for "
-                    f"{start_month_name} {start_year} → {end_month_name} {end_year}"
+                    f"{start_date.strftime('%d %b %Y')} → {end_date.strftime('%d %b %Y')}"
                 )
 
             # ---------------------------------------
